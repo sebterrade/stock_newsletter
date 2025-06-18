@@ -5,13 +5,14 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import os
 
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import LSTM, Input
 
-API_KEY = "66842ac2b00f870d7ee9a1ddae886503969a694c"
+API_KEY = os.getenv("API_KEY")
 
 class PredictionModels:
 
