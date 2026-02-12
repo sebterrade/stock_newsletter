@@ -1,8 +1,8 @@
 import os
 from datetime import datetime, time
 import smtplib
-from finance import StockData
-from youtube import Youtube
+from .finance import StockData
+from .youtube import Youtube
 from pandas.tseries.offsets import BDay
 import pandas as pd
 

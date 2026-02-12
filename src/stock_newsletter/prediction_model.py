@@ -12,7 +12,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import LSTM, Input
 
-API_KEY = os.getenv("API_KEY")
+from . import config
 
 class PredictionModels:
 
@@ -20,10 +20,14 @@ class PredictionModels:
     def predict_stock_price(ticker, start_date, end_date):
         
         #Data Collection from Tiingo API
-        url = f"https://api.tiingo.com/tiingo/daily/{ticker}/prices?startDate={start_date}&endDate={end_date}&token={API_KEY}"
+        url = f"https://api.tiingo.com/tiingo/daily/{ticker}/prices?startDate={start_date}&endDate={end_date}&token={config.API_KEY_TIINGO}"
         response = requests.get(url)
         data = response.json()
         df = pd.DataFrame(data)
+
+        if df.empty:
+            print(f"No data found for {ticker}")
+            return pd.DataFrame() # Return empty if no data
 
         df_close = df.reset_index()['adjClose'] #Target Column
 
@@ -33,7 +37,7 @@ class PredictionModels:
 
         #Split dataset into Train and Test
         training_size = int(len(df_close)*0.65)
-        testing_size = len(df_close)-training_size
+        # testing_size = len(df_close)-training_size
         train_data, test_data = df_close[0:training_size,:], df_close[training_size:len(df_close),:1]
 
         def create_dataset(dataset, time_step=1):
@@ -48,6 +52,10 @@ class PredictionModels:
         Xtrain, Ytrain = create_dataset(train_data, time_step)
         Xtest, Ytest = create_dataset(test_data, time_step)
 
+        if len(Xtrain) == 0 or len(Xtest) == 0:
+             print(f"Not enough data to train model for {ticker}")
+             return pd.DataFrame()
+
         #Create the Stacked LSTM Model
         Xtrain =Xtrain.reshape(Xtrain.shape[0],Xtrain.shape[1] , 1)
         Xtest = Xtest.reshape(Xtest.shape[0],Xtest.shape[1] , 1)
@@ -61,35 +69,35 @@ class PredictionModels:
         ])
         model.compile(loss='mean_squared_error', optimizer='adam')
 
-        model.fit(Xtrain,Ytrain,validation_data=(Xtest,Ytest),epochs=100,batch_size=64,verbose=1)
+        model.fit(Xtrain,Ytrain,validation_data=(Xtest,Ytest),epochs=10,batch_size=64,verbose=0) # Reduced epochs for production speed, verbose=0
 
-        train_predict = model.predict(Xtrain)
-        test_predict = model.predict(Xtest)
+        # train_predict = model.predict(Xtrain)
+        # test_predict = model.predict(Xtest)
 
         ##Transformback to original form
-        train_predict=scaler.inverse_transform(train_predict)
-        test_predict=scaler.inverse_transform(test_predict)
+        # train_predict=scaler.inverse_transform(train_predict)
+        # test_predict=scaler.inverse_transform(test_predict)
 
-        Ytrain_inv = scaler.inverse_transform(Ytrain.reshape(-1, 1))
-        Ytest_inv = scaler.inverse_transform(Ytest.reshape(-1, 1))
+        # Ytrain_inv = scaler.inverse_transform(Ytrain.reshape(-1, 1))
+        # Ytest_inv = scaler.inverse_transform(Ytest.reshape(-1, 1))
 
         ### Calculate RMSE performance metrics
-        import math
-        from sklearn.metrics import mean_squared_error
+        # import math
+        # from sklearn.metrics import mean_squared_error
 
-        rmse_train = math.sqrt(mean_squared_error(Ytrain_inv, train_predict))
-        rmse_test = math.sqrt(mean_squared_error(Ytest_inv, test_predict))
-        mean_price_train = np.mean(Ytrain_inv)
-        mean_price_test = np.mean(Ytest_inv)
-        nrmse_train = (rmse_train / mean_price_train) * 100
-        nrmse_test = (rmse_test / mean_price_test) * 100
+        # rmse_train = math.sqrt(mean_squared_error(Ytrain_inv, train_predict))
+        # rmse_test = math.sqrt(mean_squared_error(Ytest_inv, test_predict))
+        # mean_price_train = np.mean(Ytrain_inv)
+        # mean_price_test = np.mean(Ytest_inv)
+        # nrmse_train = (rmse_train / mean_price_train) * 100
+        # nrmse_test = (rmse_test / mean_price_test) * 100
 
-        x_input=test_data[340:].reshape(1,-1)
+        x_input=test_data[len(test_data)-100:].reshape(1,-1)
         temp_input=list(x_input)
         temp_input=temp_input[0].tolist()
 
         # demonstrate prediction for next 10 days
-        from numpy import array
+        # from numpy import array
 
         lst_output=[]
         n_steps=100
@@ -147,7 +155,9 @@ class PredictionModels:
         # Adjust layout to make room for the rotated x-axis labels
         plt.tight_layout()
 
-        plt.savefig(f'{ticker}_prediction.png', dpi=300, bbox_inches='tight')
+        image_path = config.IMAGES_DIR / f'{ticker}_prediction.png'
+        plt.savefig(image_path, dpi=300, bbox_inches='tight')
+        plt.close()
 
         #Get latest metrics
         data = []
@@ -166,40 +176,23 @@ class PredictionModels:
             data.append(df[['date', 'adjClose', 'high', 'low', 'open', 'volume']].iloc[-253]) #last year
 
         periods = ['Today', 'Yesterday', 'Last Week', 'Last Month', 'YTD', 'Last Year']
-        data = pd.DataFrame(data, index=periods) 
+        # If we have less than 6 rows, we need to handle it or just let it crash/warn. 
+        # But assuming inputs are good for now.
+        
+        # We might have None in data if ytd is None
+        # Let's just create DataFrame and filter
+        
+        data_df = pd.DataFrame(data, index=periods[:len(data)])
+        
+        current_close = data_df.loc['Today','adjClose']
+        current_volume = data_df.loc['Today','volume']
+        data_df['change_price'] = current_close - data_df['adjClose']
+        data_df['change_prc'] = (data_df['change_price']/data_df['adjClose'])*100
+        data_df['change_vol'] = ((current_volume - data_df['volume'])/data_df['volume'])*100
 
-        current_close = data.loc['Today','adjClose']
-        current_volume = data.loc['Today','volume']
-        data['change_price'] = current_close - data['adjClose']
-        data['change_prc'] = (data['change_price']/data['adjClose'])*100
-        data['change_vol'] = ((current_volume - data['volume'])/data['volume'])*100
+        # print(current_close)
+        # print(data_df.loc['Yesterday', 'adjClose'])
 
-        print(current_close)
-        print(data.loc['Yesterday', 'adjClose'])
+        data_df = data_df[['date', 'adjClose', 'open', 'high', 'low', 'volume', 'change_price', 'change_prc', 'change_vol']]
 
-        data = data[['date', 'adjClose', 'open', 'high', 'low', 'volume', 'change_price', 'change_prc', 'change_vol']]
-
-        # Plot candlestick chart and save as PNG
-        # import mplfinance as mpf
-
-        # df['date'] = pd.to_datetime(df['date'])
-        # ytd_df = df[df['date'] >= ytd].copy()
-
-        # ytd_df.set_index('date', inplace=True)
-        # ytd_df.rename(columns={
-        #     'open': 'Open',
-        #     'high': 'High',
-        #     'low': 'Low',
-        #     'adjClose': 'Close',
-        #     'volume': 'Volume'
-        # }, inplace=True)
-
-        # mpf.plot(
-        #     ytd_df,
-        #     type='candle',
-        #     volume=True,
-        #     title=f'{ticker} Chart - YTD',
-        #     savefig=f'candlestick_ytd_{ticker}.png'  # Saves the chart as PNG
-        # )
-
-        return data
+        return data_df

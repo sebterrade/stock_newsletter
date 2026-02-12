@@ -3,20 +3,14 @@ import pandas as pd
 from datetime import datetime, timedelta
 from pandas.tseries.offsets import BDay
 import matplotlib.pyplot as plt
-from prediction_model import PredictionModels
 from bs4 import BeautifulSoup
 import time
 from pytube import YouTube, Channel
 import re
 import os
 
-API_KEY_FMP = "6ulL0DWlRgiBlSYf7OnZkjERFK5nf6F9"
-
-API_KEY_Tiingo = "66842ac2b00f870d7ee9a1ddae886503969a694c"
-
-API_KEY_AP = "O87HQICP5B47MTEB"
-
-API_KEY_Finnhub = "d05b2ppr01qoigrth0igd05b2ppr01qoigrth0j0"
+from . import config
+from .prediction_model import PredictionModels
 
 class StockData:
 
@@ -36,14 +30,14 @@ class StockData:
         end_date = datetime.today().strftime("%Y-%m-%d")
         start_date = (datetime.today() - timedelta(days=5*365)).strftime("%Y-%m-%d")
 
-        url = f"https://api.tiingo.com/tiingo/daily/{ticker}/prices?startDate={start_date}&endDate={end_date}&token={API_KEY_Tiingo}"
+        url = f"https://api.tiingo.com/tiingo/daily/{ticker}/prices?startDate={start_date}&endDate={end_date}&token={config.API_KEY_TIINGO}"
         response = requests.get(url)
         data = response.json()
         df = pd.DataFrame(data)
 
-        print(df['adjClose'].iloc[-1])
-        print(df['adjClose'].iloc[-6])
-        print(df['adjClose'].iloc[-22])
+        # print(df['adjClose'].iloc[-1])
+        # print(df['adjClose'].iloc[-6])
+        # print(df['adjClose'].iloc[-22])
 
         today_close = df['adjClose'].iloc[-1]
         previous_close = df['adjClose'].iloc[-2]
@@ -69,14 +63,14 @@ class StockData:
         
         trending_items = soup.find_all('div', class_='TrendingNowItem-linkWrap')
         
+        news_info = []
         if not trending_items:
             print("No trending items found. Check class names or page structure.")
         else:
-            news_info = []
             for item in trending_items:
                 link = item.find('a')['href']
                 title = item.find('a', class_='TrendingNowItem-title').get_text(strip=True)
-                print(f"Title: {title}\nURL: {link}\n" + "-" * 50)
+                # print(f"Title: {title}\nURL: {link}\n" + "-" * 50)
 
                 news_info.append([link, title])
                  
@@ -88,13 +82,19 @@ class StockData:
         next_trading_day = (datetime.today() + BDay(1)).strftime('%Y-%m-%d')
 
         #Get data
-        url = f'https://finnhub.io/api/v1/calendar/earnings?from={next_trading_day}&to={next_trading_day}&token={API_KEY_Finnhub}'
+        url = f'https://finnhub.io/api/v1/calendar/earnings?from={next_trading_day}&to={next_trading_day}&token={config.API_KEY_FINNHUB}'
         response = requests.get(url)
         data = response.json()
 
         # Convert to DataFrame
         df = pd.DataFrame(data.get("earningsCalendar", []))
+        if df.empty:
+             print(f"No earnings data found for {next_trading_day}")
+             return pd.DataFrame()
+             
         next_day_earnings = df[df['date'] == next_trading_day]  # Extra filter for safety
+        
+        # Filter for revenue > 10B if likely valid, but be careful if no companies match
         next_day_earnings = next_day_earnings[next_day_earnings['revenueEstimate'] > 10_000_000_000]
 
         next_day_earnings['hour'] = next_day_earnings['hour'].replace({
@@ -124,11 +124,8 @@ class StockData:
         # Final output
         print(f"\nNext Trading Day: {next_trading_day}")
         print(f"Companies Reporting: {len(sorted_df)}\n")
-        print(sorted_df[['symbol', 'epsEstimate', 'hour', 'display_revenue']]
-            .rename(columns={'display_revenue': 'revenueEstimate'})
-            .reset_index(drop=True))
+        # print(sorted_df[['symbol', 'epsEstimate', 'hour', 'display_revenue']]
+        #     .rename(columns={'display_revenue': 'revenueEstimate'})
+        #     .reset_index(drop=True))
         
         return sorted_df
-
-
-StockData.fetchEarnings()

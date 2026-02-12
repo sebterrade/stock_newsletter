@@ -3,11 +3,12 @@ from datetime import datetime, time
 import smtplib
 from email.message import EmailMessage
 from email.utils import make_msgid
-from finance import StockData
-from html_content import HTML_Content
+from .finance import StockData
+from .html_content import HTML_Content
+from . import config
 
-EMAIL_ADDRESS = 'seb.terrade99@gmail.com'
-EMAIL_PASSWORD = os.getenv('GMAIL_PYTHON_PASS')
+# EMAIL_ADDRESS = 'seb.terrade99@gmail.com'
+# EMAIL_PASSWORD = os.getenv('GMAIL_PYTHON_PASS')
 
 date_today = datetime.today().strftime("%B %d, %Y")
 
@@ -15,7 +16,7 @@ image_cid = make_msgid(domain="gmail.com")
 
 def wait_for_image(image_path, retries=10, delay=1):
     for _ in range(retries):
-        if os.path.exists(image_path):
+        if image_path.exists():
             return True
         time.sleep(delay)
     return False
@@ -23,7 +24,7 @@ def wait_for_image(image_path, retries=10, delay=1):
 def send_stock_email(recipients, tickers):
     msg = EmailMessage()
     msg['Subject'] = f"{date_today} Stock Report"
-    msg['From'] = EMAIL_ADDRESS
+    msg['From'] = config.EMAIL_ADDRESS
     msg['To'] = recipients
     
     # Generate HTML content
@@ -37,7 +38,7 @@ def send_stock_email(recipients, tickers):
     for ticker in tickers:
         try:
             data = StockData.fetchStockInfo(ticker)
-            image_path = f"{ticker}_prediction.png"
+            image_path = config.IMAGES_DIR / f"{ticker}_prediction.png"
             image_cid = make_msgid(domain="gmail.com")
             
             # Store for later attachment
@@ -115,15 +116,19 @@ def send_stock_email(recipients, tickers):
             except Exception as e:
                 print(f"Error attaching image {image_path}: {str(e)}")
 
-    with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
-        smtp.ehlo()
-        smtp.starttls()
-        smtp.ehlo()
-        
-        smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-        smtp.send_message(msg)
+    if not config.EMAIL_PASSWORD:
+         print("No email password found. Skipping email send.")
+         return
 
-    print("Email sent successfully!")
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
+            smtp.ehlo()
+            smtp.starttls()
+            smtp.ehlo()
+            
+            smtp.login(config.EMAIL_ADDRESS, config.EMAIL_PASSWORD)
+            smtp.send_message(msg)
 
-tickers = ['NVDA', 'TSLA']
-send_stock_email('seb.terrade99@gmail.com', tickers)
+        print("Email sent successfully!")
+    except Exception as e:
+         print(f"Failed to send email: {e}")
