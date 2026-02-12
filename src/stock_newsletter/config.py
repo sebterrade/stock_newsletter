@@ -10,6 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 IMAGES_DIR = DATA_DIR / "images"
 LOGS_DIR = DATA_DIR / "logs"
+DB_PATH = DATA_DIR / "stock_newsletter.db"
 
 # Ensure directories exist
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)

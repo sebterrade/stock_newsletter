@@ -8,3 +8,4 @@ isodate
 tensorflow
 scikit-learn
 python-dotenv
+sqlmodel
